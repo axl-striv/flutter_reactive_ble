@@ -13,6 +13,30 @@ typealias AdvertisementData = [String: Any]
 
 final class Central {
 
+    // Optional, process-local diagnostics. No names, advertisement payloads,
+    // characteristic values, or NSError userInfo leave this layer.
+    private let diagnosticID = UUID().uuidString
+    private func trace(_ event: String, device: UUID? = nil, error: Error? = nil,
+                       fields: [String: Any] = [:]) {
+        var data = fields
+        data["source"] = "corebluetooth"
+        data["event"] = event
+        data["central_id"] = diagnosticID
+        data["native_ms"] = Int64(Date().timeIntervalSince1970 * 1000)
+        data["uptime_ms"] = Int64(ProcessInfo.processInfo.systemUptime * 1000)
+        data["device_id"] = device?.uuidString
+        if let error = error as NSError? {
+            data["error_domain"] = error.domain
+            data["error_code"] = error.code
+            if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+                data["underlying_error_domain"] = underlying.domain
+                data["underlying_error_code"] = underlying.code
+            }
+        }
+        NotificationCenter.default.post(name: Notification.Name("striv.ble.nativeDiagnostic"),
+                                        object: nil, userInfo: data)
+    }
+
     typealias StateChangeHandler = (Central, CBManagerState) -> Void
     typealias DiscoveryHandler = (Central, CBPeripheral, AdvertisementData, RSSI) -> Void
     typealias ConnectionChangeHandler = (Central, CBPeripheral, ConnectionChange) -> Void
@@ -45,6 +69,7 @@ final class Central {
         self.onServicesWithCharacteristicsInitialDiscovery = onServicesWithCharacteristicsInitialDiscovery
         self.centralManagerDelegate = CentralManagerDelegate(
             onStateChange: papply(weak: self) { central, state in
+                central.trace("state_changed", fields: ["state": state.rawValue])
                 if state != .poweredOn {
                     central.activePeripherals.forEach { _, peripheral in
                         let error = Failure.notPoweredOn(actualState: state)
@@ -56,6 +81,16 @@ final class Central {
             },
             onDiscovery: papply(weak: self, onDiscovery),
             onConnectionChange: papply(weak: self) { central, peripheral, change in
+                // Record BEFORE task completion starts discovery. Flutter's
+                // connected event is deliberately delayed until discovery ends.
+                switch change {
+                case .connected:
+                    central.trace("did_connect", device: peripheral.identifier)
+                case .failedToConnect(let error):
+                    central.trace("did_fail_to_connect", device: peripheral.identifier, error: error)
+                case .disconnected(let error):
+                    central.trace("did_disconnect", device: peripheral.identifier, error: error)
+                }
                 central.connectRegistry.updateTask(
                     key: peripheral.identifier,
                     action: { $0.handleConnectionChange(change) }
@@ -125,7 +160,10 @@ final class Central {
             delegate: centralManagerDelegate,
             queue: nil
         )
+        trace("central_created")
     }
+
+    deinit { trace("central_released") }
 
     var state: CBManagerState { return centralManager.state }
 
@@ -143,6 +181,8 @@ final class Central {
     }
 
     func connect(to peripheralID: PeripheralID, discover servicesWithCharacteristicsToDiscover: ServicesWithCharacteristicsToDiscover, timeout: TimeInterval?) throws {
+        trace("connect_requested", device: peripheralID,
+              fields: ["timeout_ms": Int((timeout ?? 0) * 1000)])
         let peripheral = try resolve(known: peripheralID)
 
         peripheral.delegate = peripheralDelegate
@@ -180,6 +220,7 @@ final class Central {
     }
 
     func disconnect(from peripheralID: PeripheralID) {
+        trace("disconnect_requested", device: peripheralID)
         guard let peripheral = try? resolve(known: peripheralID)
         else { return }
 
@@ -189,7 +230,10 @@ final class Central {
     func disconnectAll() {
         activePeripherals
             .values
-            .forEach(centralManager.cancelPeripheralConnection)
+            .forEach { peripheral in
+                trace("disconnect_all_requested", device: peripheral.identifier)
+                centralManager.cancelPeripheralConnection(peripheral)
+            }
     }
 
     func discoverServicesWithCharacteristics(
@@ -215,10 +259,13 @@ final class Central {
         discover servicesWithCharacteristicsToDiscover: ServicesWithCharacteristicsToDiscover,
         completion: @escaping ServicesWithCharacteristicsDiscoveryHandler
     ) {
+        trace("discovery_started", device: peripheral.identifier)
         servicesWithCharacteristicsDiscoveryRegistry.registerTask(
             key: peripheral.identifier,
             params: .init(servicesWithCharacteristicsToDiscover: servicesWithCharacteristicsToDiscover),
             completion: papply(weak: self) { central, result in
+                central.trace("discovery_completed", device: peripheral.identifier,
+                              error: result.first, fields: ["error_count": result.count])
                 completion(central, peripheral, result)
             }
         )
@@ -341,6 +388,10 @@ final class Central {
             action: { $0.cancel(error: error) }
         )
         characteristicWriteRegistry.updateTasks(
+            in: peripheral.identifier,
+            action: { $0.cancel(error: error) }
+        )
+        readRssiRegistry.updateTasks(
             in: peripheral.identifier,
             action: { $0.cancel(error: error) }
         )

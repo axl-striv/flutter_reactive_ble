@@ -42,9 +42,10 @@ final class PluginController {
             onStateChange: papply(weak: self) { context, _, state in
                 context.reportState(state)
             },
-            onDiscovery: papply(weak: self) { context, _, peripheral, advertisementData, rssi in
+            onDiscovery: papply(weak: self) { context, central, peripheral, advertisementData, rssi in
+                // A scan iOS restored after a relaunch has no Dart listener.
                 guard let sink = context.scan?.sink
-                else { assert(false); return }
+                else { central.stopScan(); return }
 
                 let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? ServiceData ?? [:]
                 let serviceUuids = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []

@@ -97,7 +97,6 @@ final class Central {
             },
             onDiscovery: papply(weak: self, onDiscovery),
             onConnectionChange: papply(weak: self) { central, peripheral, change in
-                central.restoredPeripherals[peripheral.identifier] = nil
                 // Record BEFORE task completion starts discovery. Flutter's
                 // connected event is deliberately delayed until discovery ends.
                 switch change {
@@ -209,6 +208,7 @@ final class Central {
 
         peripheral.delegate = peripheralDelegate
         activePeripherals[peripheral.identifier] = peripheral
+        restoredPeripherals[peripheral.identifier] = nil
 
         connectRegistry.registerTask(
             key: peripheralID,

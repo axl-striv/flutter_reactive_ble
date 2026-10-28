@@ -11,19 +11,27 @@ final class CentralManagerDelegate: NSObject, CBCentralManagerDelegate {
     typealias StateChangeHandler = (CBManagerState) -> Void
     typealias DiscoveryHandler = (CBPeripheral, AdvertisementData, RSSI) -> Void
     typealias ConnectionChangeHandler = (CBPeripheral, ConnectionChange) -> Void
+    typealias RestoreHandler = ([CBPeripheral]) -> Void
 
     private let onStateChange: StateChangeHandler
     private let onDiscovery: DiscoveryHandler
     private let onConnectionChange: ConnectionChangeHandler
+    private let onRestore: RestoreHandler
 
     init(
         onStateChange: @escaping StateChangeHandler,
         onDiscovery: @escaping DiscoveryHandler,
-        onConnectionChange: @escaping ConnectionChangeHandler
+        onConnectionChange: @escaping ConnectionChangeHandler,
+        onRestore: @escaping RestoreHandler
     ) {
         self.onStateChange = onStateChange
         self.onDiscovery = onDiscovery
         self.onConnectionChange = onConnectionChange
+        self.onRestore = onRestore
+    }
+
+    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        onRestore(dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? [])
     }
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {

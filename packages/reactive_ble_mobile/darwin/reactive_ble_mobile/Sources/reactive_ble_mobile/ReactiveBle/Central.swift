@@ -58,6 +58,22 @@ final class Central {
     private let characteristicNotifyRegistry = PeripheralTaskRegistry<CharacteristicNotifyTaskController>()
     private let characteristicWriteRegistry = PeripheralTaskRegistry<CharacteristicWriteTaskController>()
     private let readRssiRegistry = PeripheralTaskRegistry<ReadRssiTaskController>()
+    // Peripherals iOS handed back on a state-restoration relaunch. Held only so
+    // CoreBluetooth keeps their links until Dart connects to them again.
+    private var restoredPeripherals = [PeripheralID: CBPeripheral]()
+
+    // iOS relaunches a terminated app for a pending connect only if the
+    // central opted into state restoration, which requires the
+    // bluetooth-central background mode.
+    private static var restoreOptions: [String: Any]? {
+        #if os(iOS)
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        guard modes.contains("bluetooth-central") else { return nil }
+        return [CBCentralManagerOptionRestoreIdentifierKey: "reactive_ble_mobile.central"]
+        #else
+        return nil
+        #endif
+    }
 
     init(
         onStateChange: @escaping StateChangeHandler,
@@ -104,6 +120,10 @@ final class Central {
                 }
 
                 onConnectionChange(central, peripheral, change)
+            },
+            onRestore: papply(weak: self) { central, peripherals in
+                central.trace("state_restored", fields: ["peripheral_count": peripherals.count])
+                peripherals.forEach { central.restoredPeripherals[$0.identifier] = $0 }
             }
         )
         self.peripheralDelegate = PeripheralDelegate(
@@ -158,7 +178,8 @@ final class Central {
         )
         self.centralManager = CBCentralManager(
             delegate: centralManagerDelegate,
-            queue: nil
+            queue: nil,
+            options: Central.restoreOptions
         )
         trace("central_created")
     }
@@ -187,6 +208,7 @@ final class Central {
 
         peripheral.delegate = peripheralDelegate
         activePeripherals[peripheral.identifier] = peripheral
+        restoredPeripherals[peripheral.identifier] = nil
 
         connectRegistry.registerTask(
             key: peripheralID,

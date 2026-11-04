@@ -53,6 +53,23 @@ final class PeripheralTaskRegistry<Controller: PeripheralTaskController> {
         )
     }
 
+    /// Applies [action] to the first task for [key], and to the next while it
+    /// finishes the task outright, so the queue stops at one still running.
+    func updateTasksUntilRunning(
+        key: SubjectTask.Key,
+        action: (Controller) -> SubjectTask
+    ) {
+        var finishedOne: Bool
+        repeat {
+            finishedOne = false
+            updateTask(key: key) { controller in
+                let updatedTask = action(controller)
+                updatedTask.iif(finished: { _, _ in finishedOne = true }, otherwise: {})
+                return updatedTask
+            }
+        } while finishedOne
+    }
+
     func updateTasks(
         in group: SubjectTask.Group,
         action: (Controller) -> SubjectTask

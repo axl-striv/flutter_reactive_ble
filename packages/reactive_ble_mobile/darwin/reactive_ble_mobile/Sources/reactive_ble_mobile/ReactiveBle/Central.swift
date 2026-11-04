@@ -149,6 +149,10 @@ final class Central {
                     key: q,
                     action: { $0.complete(error: error) }
                 )
+                central.characteristicNotifyRegistry.updateTasksUntilRunning(
+                    key: q,
+                    action: { $0.start(characteristic: characteristic) }
+                )
             },
             onCharacteristicValueUpdate: papply(weak: self) { central, characteristic, error in
                 guard let q = try? CharacteristicInstance(characteristic)
@@ -312,7 +316,7 @@ final class Central {
             }
         )
 
-        characteristicNotifyRegistry.updateTask(
+        characteristicNotifyRegistry.updateTasksUntilRunning(
             key: characteristicInstance,
             action: { $0.start(characteristic: characteristic) }
         )

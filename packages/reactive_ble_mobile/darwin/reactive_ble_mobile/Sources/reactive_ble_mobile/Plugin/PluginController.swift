@@ -32,6 +32,14 @@ final class PluginController {
     var connectedDeviceSink: EventSink?
     var characteristicValueUpdateSink: EventSink?
 
+    func recoverPendingConnection(_ id: String, completion: @escaping FlutterResult) {
+        guard let central = central, let identifier = UUID(uuidString: id) else {
+            completion(false)
+            return
+        }
+        central.recoverPendingConnection(identifier) { completion($0) }
+    }
+
     func initialize(name: String, completion: @escaping PlatformMethodCompletionHandler) {
         if let central = central {
             central.stopScan()

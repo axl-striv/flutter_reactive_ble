@@ -32,6 +32,11 @@ struct ConnectTaskController: PeripheralTaskController {
         return task.with(state: task.state.finished(connectionChange))
     }
 
+    /// Drop a task after the link is terminal, without cancelling a newer radio request.
+    func retire(error: Error?) -> SubjectTask {
+        return task.with(state: task.state.finished(.failedToConnect(error)))
+    }
+
     func cancel(centralManager: CBCentralManager, peripheral: CBPeripheral, error: Error?) -> SubjectTask {
         switch task.state {
         case .pending:

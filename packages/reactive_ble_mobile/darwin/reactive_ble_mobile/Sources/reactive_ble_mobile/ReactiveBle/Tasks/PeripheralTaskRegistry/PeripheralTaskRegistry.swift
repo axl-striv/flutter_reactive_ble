@@ -14,15 +14,18 @@ final class PeripheralTaskRegistry<Controller: PeripheralTaskController> {
         key: SubjectTask.Key,
         params: SubjectTask.Params,
         timeout: SubjectTask.Timeout? = nil,
+        timeoutAllowed: @escaping () -> Bool = { true },
         completion: @escaping SubjectTask.CompletionHandler
     ) {
         let task = SubjectTask(
             key: key,
             params: params,
             timeout: timeout,
+            timeoutAllowed: timeoutAllowed,
             completion: completion
         )
         tasks.add(task)
+
         log("\(Controller.TaskSpec.tag) op enqueued, \(tasks.count) in queue, \(tasks.totalAdded) have been added over the lifetime")
     }
 
@@ -107,6 +110,13 @@ final class PeripheralTaskRegistry<Controller: PeripheralTaskController> {
             withTimeInterval: timeout.duration,
             repeats: false,
             block: papply(weak: self) { registry, _ in
+                guard let record = registry.tasks.firstWith(uniqueID: uniqueID) else { return }
+                if !record.task.timeoutAllowed() {
+                    // Keep the task for a delayed didConnect after suspension.
+                    registry.clearTimeout(uniqueID)
+                    registry.scheduleTaskTimeout(uniqueID, (min(timeout.duration, 5), timeout.handler))
+                    return
+                }
                 registry.log("\(Controller.TaskSpec.tag) op timed out after \(timeout.duration) s, \(registry.tasks.count - 1) in queue")
                 timeout.handler()
                 registry.remove(uniqueID)

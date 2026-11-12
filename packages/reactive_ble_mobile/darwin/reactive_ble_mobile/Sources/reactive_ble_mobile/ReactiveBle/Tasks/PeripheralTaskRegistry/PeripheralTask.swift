@@ -64,17 +64,19 @@ struct PeripheralTask<Spec: PeripheralTaskSpec> {
     let params: Params
     let state: State
     let timeout: Timeout?
+    let timeoutAllowed: () -> Bool
     let completion: CompletionHandler
 
-    init(key: Key, params: Params, timeout: Timeout?, completion: @escaping CompletionHandler) {
-        self.init(key: key, params: params, state: .pending, timeout: timeout, completion: completion)
+    init(key: Key, params: Params, timeout: Timeout?, timeoutAllowed: @escaping () -> Bool = { true }, completion: @escaping CompletionHandler) {
+        self.init(key: key, params: params, state: .pending, timeout: timeout, timeoutAllowed: timeoutAllowed, completion: completion)
     }
 
-    private init(key: Key, params: Params, state: State, timeout: Timeout?, completion: @escaping CompletionHandler) {
+    private init(key: Key, params: Params, state: State, timeout: Timeout?, timeoutAllowed: @escaping () -> Bool = { true }, completion: @escaping CompletionHandler) {
         self.key = key
         self.params = params
         self.state = state
         self.timeout = timeout
+        self.timeoutAllowed = timeoutAllowed
         self.completion = completion
     }
 
@@ -84,6 +86,7 @@ struct PeripheralTask<Spec: PeripheralTaskSpec> {
             params: params,
             state: newState,
             timeout: timeout,
+            timeoutAllowed: timeoutAllowed,
             completion: completion
         )
     }

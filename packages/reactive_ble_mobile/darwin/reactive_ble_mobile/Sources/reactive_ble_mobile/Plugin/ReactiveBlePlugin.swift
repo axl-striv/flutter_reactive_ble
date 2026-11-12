@@ -158,6 +158,10 @@ public class ReactiveBlePlugin: NSObject, FlutterPlugin {
     ])
 
     public func handle(_ call: FlutterMethodCall, result completion: @escaping FlutterResult) {
+        if call.method == "recoverPendingConnection", let id = call.arguments as? String {
+            context.recoverPendingConnection(id, completion: completion)
+            return
+        }
         methodHandler.handle(in: context, call, completion: completion)
     }
 }
